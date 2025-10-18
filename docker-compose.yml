@@ -1,0 +1,61 @@
+version: '3.3'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: docker/php/Dockerfile
+    container_name: laradevops_app
+    restart: unless-stopped
+    working_dir: /var/www/html
+    volumes:
+      - ./src:/var/www/html
+    networks:
+      - laradevops_network
+
+  nginx:
+    image: nginx:stable-alpine
+    container_name: laradevops_nginx
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    volumes:
+      - ./src:/var/www/html
+      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf
+    depends_on:
+      - app
+    networks:
+      - laradevops_network
+
+  mysql:
+    image: mysql:8.0
+    container_name: laradevops_mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: laradevops
+      MYSQL_ROOT_PASSWORD: root_password
+      MYSQL_USER: laradevops_user
+      MYSQL_PASSWORD: laradevops_password
+    volumes:
+      - mysql_data:/var/lib/mysql
+    ports:
+      - "3306:3306"
+    networks:
+      - laradevops_network
+
+  redis:
+    image: redis:latest
+    container_name: laradevops_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    networks:
+      - laradevops_network
+
+volumes:
+  mysql_data:
+    driver: local
+
+networks:
+  laradevops_network:
+    driver: bridge
