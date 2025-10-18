@@ -11,10 +11,15 @@ RUN apt-get update && apt-get install -y \
     unzip \
     libzip-dev \
     libicu-dev \
+    libfreetype6-dev \
+    libjpeg62-turbo-dev \
+    libwebp-dev \
+    libxpm-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Install PHP extensions
-RUN docker-php-ext-install \
+RUN docker-php-ext-configure gd --with-freetype --with-jpeg --with-webp --with-xpm \
+    && docker-php-ext-install \
     pdo_mysql \
     mbstring \
     exif \
@@ -23,6 +28,9 @@ RUN docker-php-ext-install \
     gd \
     intl \
     zip
+
+# Install Redis extension
+RUN pecl install redis-5.3.7 && docker-php-ext-enable redis
 
 # Get latest Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
