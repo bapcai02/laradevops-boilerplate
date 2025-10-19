@@ -69,6 +69,48 @@ services:
     networks:
       - laradevops_network
 
+  horizon:
+    build:
+      context: .
+      dockerfile: docker/horizon/Dockerfile
+    container_name: laradevops_horizon
+    restart: unless-stopped
+    working_dir: /var/www/html
+    volumes:
+      - ./src:/var/www/html
+    depends_on:
+      - app
+      - redis
+      - mysql
+    networks:
+      - laradevops_network
+
+  scheduler:
+    build:
+      context: .
+      dockerfile: docker/scheduler/Dockerfile
+    container_name: laradevops_scheduler
+    restart: unless-stopped
+    working_dir: /var/www/html
+    volumes:
+      - ./src:/var/www/html
+    depends_on:
+      - app
+      - redis
+      - mysql
+    networks:
+      - laradevops_network
+
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: laradevops_mailhog
+    restart: unless-stopped
+    ports:
+      - "${MAILHOG_PORT:-8025}:8025"
+      - "${MAILHOG_SMTP_PORT:-1025}:1025"
+    networks:
+      - laradevops_network
+
 volumes:
   mysql_data:
     driver: local

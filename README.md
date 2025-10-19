@@ -5,6 +5,11 @@ A complete Laravel DevOps boilerplate with Docker, CI/CD, and automated deployme
 ## 🚀 Features
 
 - **Docker Environment**: Complete Docker setup with PHP 8.3, Nginx, MySQL 8.0, and Redis
+- **Queue Management**: Laravel Horizon for queue processing and monitoring
+- **Task Scheduling**: Automated cron scheduler for Laravel tasks
+- **Email Testing**: Mailhog for local email testing and debugging
+- **Notifications**: Slack/Telegram/Discord notifications for deployments
+- **Database Backup**: Automatic database backup before each deployment
 - **CI/CD Pipeline**: Automated testing and deployment via GitHub Actions
 - **SSH Deployment**: Automated deployment script for production servers
 - **Development Ready**: One-command setup for local development
@@ -16,8 +21,12 @@ A complete Laravel DevOps boilerplate with Docker, CI/CD, and automated deployme
 laradevops-boilerplate/
 ├── docker/
 │   ├── php/Dockerfile          # PHP 8.3 with required extensions
+│   ├── horizon/Dockerfile      # Laravel Horizon worker
+│   ├── scheduler/Dockerfile    # Cron scheduler
 │   └── nginx/default.conf      # Nginx configuration
 ├── src/                        # Laravel application
+│   ├── config/notify.php       # Notification configuration
+│   └── app/Console/Commands/   # Custom Artisan commands
 ├── deploy/
 │   └── deploy.sh              # Production deployment script
 ├── .github/
@@ -69,6 +78,8 @@ The script will:
 - **Web Application**: http://localhost:8080
 - **Database**: localhost:3306 (MySQL)
 - **Redis**: localhost:6379
+- **Mailhog**: http://localhost:8025 (Email testing)
+- **Horizon Dashboard**: http://localhost:8080/horizon (Queue monitoring)
 
 ## 🐳 Docker Services
 
@@ -80,6 +91,9 @@ The script will:
 | **Nginx** | `laradevops_nginx` | 8080 | Web server and reverse proxy |
 | **MySQL** | `laradevops_mysql` | 3306 | Database server |
 | **Redis** | `laradevops_redis` | 6379 | Cache and session storage |
+| **Horizon** | `laradevops_horizon` | - | Laravel queue worker |
+| **Scheduler** | `laradevops_scheduler` | - | Cron task scheduler |
+| **Mailhog** | `laradevops_mailhog` | 8025 | Email testing tool |
 
 ### Docker Commands
 
@@ -101,6 +115,12 @@ docker-compose exec app bash
 
 # Access database
 docker-compose exec mysql mysql -u laradevops_user -p laradevops
+
+# View Horizon dashboard
+open http://localhost:8080/horizon
+
+# View Mailhog interface
+open http://localhost:8025
 ```
 
 ## 🔧 Development
@@ -147,6 +167,128 @@ docker-compose exec app php artisan db:seed
 docker-compose exec app php artisan migrate:fresh --seed
 ```
 
+## 🔄 Queue Management with Horizon
+
+### Setting up Horizon
+
+Laravel Horizon provides a beautiful dashboard and code-driven configuration for your Redis powered queue workers.
+
+```bash
+# Publish Horizon configuration
+docker-compose exec app php artisan horizon:install
+
+# Start Horizon (already running in container)
+docker-compose exec app php artisan horizon
+
+# View Horizon dashboard
+open http://localhost:8080/horizon
+```
+
+### Queue Configuration
+
+Horizon is pre-configured to work with Redis. The dashboard shows:
+- Job throughput and runtime
+- Failed jobs and retry attempts
+- Queue metrics and performance
+- Real-time job monitoring
+
+## ⏰ Task Scheduling
+
+The scheduler container runs Laravel's task scheduler via cron every minute.
+
+### Creating Scheduled Tasks
+
+```bash
+# Create a new command
+docker-compose exec app php artisan make:command SendEmails
+
+# Add to Kernel.php schedule method
+protected function schedule(Schedule $schedule)
+{
+    $schedule->command('emails:send')->hourly();
+    $schedule->call(function () {
+        // Your task logic
+    })->daily();
+}
+```
+
+### Monitoring Scheduled Tasks
+
+```bash
+# View scheduled tasks
+docker-compose exec app php artisan schedule:list
+
+# Run scheduler manually
+docker-compose exec app php artisan schedule:run
+
+# View scheduler logs
+docker-compose logs scheduler
+```
+
+## 📧 Email Testing with Mailhog
+
+Mailhog captures emails sent by your application for testing and debugging.
+
+### Configuration
+
+```bash
+# Email is already configured to use Mailhog
+MAIL_MAILER=smtp
+MAIL_HOST=mailhog
+MAIL_PORT=1025
+```
+
+### Testing Emails
+
+```bash
+# Send a test email
+docker-compose exec app php artisan tinker
+>>> Mail::raw('Test email', function($msg) { $msg->to('test@example.com')->subject('Test'); });
+
+# View captured emails
+open http://localhost:8025
+```
+
+## 🔔 Notifications
+
+The boilerplate includes a comprehensive notification system for deployment alerts.
+
+### Configuration
+
+Edit `src/config/notify.php` or set environment variables:
+
+```bash
+# Slack notifications
+SLACK_NOTIFY_ENABLED=true
+SLACK_WEBHOOK_URL=https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK
+SLACK_CHANNEL=#deployments
+
+# Telegram notifications
+TELEGRAM_NOTIFY_ENABLED=true
+TELEGRAM_BOT_TOKEN=your_bot_token
+TELEGRAM_CHAT_ID=your_chat_id
+
+# Discord notifications
+DISCORD_NOTIFY_ENABLED=true
+DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/YOUR/WEBHOOK
+```
+
+### Using Notifications
+
+```bash
+# Send custom notifications
+docker-compose exec app php artisan laradev:notify success --message="Custom success message"
+docker-compose exec app php artisan laradev:notify fail --message="Custom failure message"
+docker-compose exec app php artisan laradev:notify started --message="Deployment started"
+```
+
+### Supported Channels
+
+- **Slack**: Rich attachments with deployment details
+- **Telegram**: Markdown formatted messages
+- **Discord**: Embedded messages with color coding
+- **Webhook**: Generic HTTP webhook support
+
 ## 🚀 CI/CD Pipeline
 
 ### GitHub Actions Workflow
@@ -166,6 +308,11 @@ Configure these secrets in your GitHub repository settings:
 | `USERNAME` | SSH username | `deploy` |
 | `SSH_KEY` | Private SSH key for server access | `-----BEGIN OPENSSH PRIVATE KEY-----...` |
 | `PROJECT_PATH` | Project path on server | `/var/www/laradevops-boilerplate` |
+| `SLACK_WEBHOOK_URL` | Slack webhook for notifications | `https://hooks.slack.com/services/...` |
+| `TELEGRAM_BOT_TOKEN` | Telegram bot token | `123456789:ABC...` |
+| `TELEGRAM_CHAT_ID` | Telegram chat ID | `-1001234567890` |
+| `DOCKER_USERNAME` | Docker Hub username | `yourusername` |
+| `DOCKER_PASSWORD` | Docker Hub password/token | `yourpassword` |
 
 ### Setting up GitHub Secrets
 
@@ -218,12 +365,15 @@ Configure these secrets in your GitHub repository settings:
 ```
 
 The deployment script will:
+- Send deployment started notification
+- Create database backup before deployment
 - Pull latest changes from Git
 - Install/update Composer dependencies
 - Run database migrations
 - Clear and cache configuration
 - Restart services
 - Perform health checks
+- Send success/failure notifications
 
 ### Automated Deployment
 
@@ -232,6 +382,9 @@ Deployments are automatically triggered when you push to the `main` branch. The 
 1. Run tests
 2. Deploy to production server via SSH
 3. Execute the deployment script
+4. Upload deployment logs as artifacts
+5. Send notifications to configured channels
+6. Build and push Docker images
 
 ## 🔒 Security Considerations
 
@@ -343,6 +496,16 @@ If you encounter any issues or have questions:
 4. Check the Laravel documentation for framework-specific issues
 
 ## 🔄 Version History
+
+### Version 2.0 (Production Ready)
+- ✅ Laravel Horizon for queue management
+- ✅ Automated task scheduling with cron
+- ✅ Mailhog for email testing
+- ✅ Multi-channel notification system (Slack/Telegram/Discord)
+- ✅ Automatic database backup before deployment
+- ✅ Enhanced CI/CD pipeline with Docker builds
+- ✅ Deployment notifications and logging
+- ✅ Production-ready Docker services
 
 ### Version 1.0 (MVP)
 - ✅ Docker environment setup

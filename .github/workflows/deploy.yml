@@ -1,84 +1,168 @@
-name: Deploy Laravel App
+name: Deploy to Production
 
 on:
   push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
+    branches: [ main, master ]
+  workflow_dispatch:
+
+env:
+  APP_ENV: production
+  ENVIRONMENT: production
 
 jobs:
-  test:
+  deploy:
     runs-on: ubuntu-latest
     
-    services:
-      mysql:
-        image: mysql:8.0
-        env:
-          MYSQL_ROOT_PASSWORD: root_password
-          MYSQL_DATABASE: laradevops_test
-          MYSQL_USER: test_user
-          MYSQL_PASSWORD: test_password
-        ports:
-          - 3306:3306
-        options: --health-cmd="mysqladmin ping" --health-interval=10s --health-timeout=5s --health-retries=3
-
-      redis:
-        image: redis:latest
-        ports:
-          - 6379:6379
-        options: --health-cmd="redis-cli ping" --health-interval=10s --health-timeout=5s --health-retries=3
-
     steps:
-    - uses: actions/checkout@v4
-
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
     - name: Setup PHP
       uses: shivammathur/setup-php@v2
       with:
         php-version: '8.3'
-        extensions: mbstring, dom, fileinfo, mysql, pdo_mysql, intl, zip, gd, redis
+        extensions: mbstring, dom, fileinfo, mysql, zip, redis
         coverage: none
-
-    - name: Copy .env
-      run: php -r "file_exists('.env') || copy('.env.example', '.env');"
-
-    - name: Install Dependencies
-      run: composer install -q --no-ansi --no-interaction --no-scripts --no-progress --prefer-dist
-
-    - name: Generate key
-      run: php artisan key:generate
-
-    - name: Directory Permissions
-      run: chmod -R 777 storage bootstrap/cache
-
-    - name: Create Database
+        
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        
+    - name: Install Composer dependencies
       run: |
-        mysql --host 127.0.0.1 --port 3306 -uroot -proot_password -e "CREATE DATABASE IF NOT EXISTS laradevops_test;"
-
-    - name: Execute tests (Unit and Feature tests) via PHPUnit
-      env:
-        DB_CONNECTION: mysql
-        DB_HOST: 127.0.0.1
-        DB_PORT: 3306
-        DB_DATABASE: laradevops_test
-        DB_USERNAME: test_user
-        DB_PASSWORD: test_password
-        REDIS_HOST: 127.0.0.1
-        REDIS_PORT: 6379
-      run: php artisan test
-
-  deploy:
-    needs: test
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    
-    steps:
+        cd src
+        composer install --no-dev --optimize-autoloader --no-interaction
+        
+    - name: Install NPM dependencies
+      run: |
+        cd src
+        npm ci
+        
+    - name: Build assets
+      run: |
+        cd src
+        npm run production
+        
+    - name: Setup environment
+      run: |
+        cd src
+        cp .env.example .env
+        php artisan key:generate
+        
+    - name: Run tests
+      run: |
+        cd src
+        php artisan test
+        
     - name: Deploy to server
-      uses: appleboy/ssh-action@v1.0.0
+      uses: appleboy/ssh-action@v1.0.3
       with:
         host: ${{ secrets.HOST }}
         username: ${{ secrets.USERNAME }}
         key: ${{ secrets.SSH_KEY }}
+        port: ${{ secrets.PORT || 22 }}
         script: |
           cd ${{ secrets.PROJECT_PATH }}
           chmod +x deploy/deploy.sh
-          ./deploy/deploy.sh
+          ENVIRONMENT=production ./deploy/deploy.sh
+          
+    - name: Upload deployment logs
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: deployment-logs-${{ github.run_number }}
+        path: |
+          logs/deploy.log
+          /backups/laravel_*.sql.gz
+        retention-days: 30
+        
+    - name: Send Slack notification on success
+      if: success()
+      uses: 8398a7/action-slack@v3
+      with:
+        status: success
+        channel: '#deployments'
+        text: '🚀 Deployment to production completed successfully!'
+        webhook_url: ${{ secrets.SLACK_WEBHOOK_URL }}
+        
+    - name: Send Slack notification on failure
+      if: failure()
+      uses: 8398a7/action-slack@v3
+      with:
+        status: failure
+        channel: '#deployments'
+        text: '❌ Deployment to production failed!'
+        webhook_url: ${{ secrets.SLACK_WEBHOOK_URL }}
+        
+    - name: Send Telegram notification on success
+      if: success()
+      uses: appleboy/telegram-action@master
+      with:
+        to: ${{ secrets.TELEGRAM_CHAT_ID }}
+        token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        message: |
+          🚀 *Deployment Successful*
+          
+          Environment: Production
+          Branch: ${{ github.ref_name }}
+          Commit: ${{ github.sha }}
+          Author: ${{ github.actor }}
+          Time: ${{ github.event.head_commit.timestamp }}
+          
+          [View Details](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+          
+    - name: Send Telegram notification on failure
+      if: failure()
+      uses: appleboy/telegram-action@master
+      with:
+        to: ${{ secrets.TELEGRAM_CHAT_ID }}
+        token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        message: |
+          ❌ *Deployment Failed*
+          
+          Environment: Production
+          Branch: ${{ github.ref_name }}
+          Commit: ${{ github.sha }}
+          Author: ${{ github.actor }}
+          Time: ${{ github.event.head_commit.timestamp }}
+          
+          [View Details](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+
+  docker-build:
+    runs-on: ubuntu-latest
+    needs: deploy
+    if: success()
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+      
+    - name: Login to Docker Hub
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_PASSWORD }}
+        
+    - name: Build and push Docker images
+      run: |
+        docker buildx build --platform linux/amd64,linux/arm64 \
+          -f docker/php/Dockerfile \
+          -t ${{ secrets.DOCKER_USERNAME }}/laradevops-app:latest \
+          -t ${{ secrets.DOCKER_USERNAME }}/laradevops-app:${{ github.sha }} \
+          --push .
+          
+        docker buildx build --platform linux/amd64,linux/arm64 \
+          -f docker/horizon/Dockerfile \
+          -t ${{ secrets.DOCKER_USERNAME }}/laradevops-horizon:latest \
+          -t ${{ secrets.DOCKER_USERNAME }}/laradevops-horizon:${{ github.sha }} \
+          --push .
+          
+        docker buildx build --platform linux/amd64,linux/arm64 \
+          -f docker/scheduler/Dockerfile \
+          -t ${{ secrets.DOCKER_USERNAME }}/laradevops-scheduler:latest \
+          -t ${{ secrets.DOCKER_USERNAME }}/laradevops-scheduler:${{ github.sha }} \
+          --push .
