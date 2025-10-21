@@ -5,11 +5,12 @@ A complete Laravel DevOps boilerplate with Docker, CI/CD, and automated deployme
 ## 🚀 Features
 
 - **Docker Environment**: Complete Docker setup with PHP 8.3, Nginx, MySQL 8.0, and Redis
-- **Queue Management**: Laravel Horizon for queue processing and monitoring
 - **Task Scheduling**: Automated cron scheduler for Laravel tasks
 - **Email Testing**: Mailhog for local email testing and debugging
 - **Notifications**: Slack/Telegram/Discord notifications for deployments
 - **Database Backup**: Automatic database backup before each deployment
+- **Admin Panel (Blade)**: Dashboard, Logs, Jobs, Deploy, Cache, System
+- **Monitoring**: Basic PHP/system metrics
 - **CI/CD Pipeline**: Automated testing and deployment via GitHub Actions
 - **SSH Deployment**: Automated deployment script for production servers
 - **Development Ready**: One-command setup for local development
@@ -27,6 +28,7 @@ laradevops-boilerplate/
 ├── src/                        # Laravel application
 │   ├── config/notify.php       # Notification configuration
 │   └── app/Console/Commands/   # Custom Artisan commands
+ 
 ├── deploy/
 │   └── deploy.sh              # Production deployment script
 ├── .github/
@@ -41,6 +43,10 @@ laradevops-boilerplate/
 ```
 
 ## 🛠️ Quick Start
+
+Admin user
+Username: admin@example.com
+Password: secret123
 
 ### Prerequisites
 
@@ -75,11 +81,12 @@ The script will:
 
 ### 3. Access Your Application
 
-- **Web Application**: http://localhost:8080
+- **Web Application**: http://localhost:8081
 - **Database**: localhost:3306 (MySQL)
 - **Redis**: localhost:6379
 - **Mailhog**: http://localhost:8025 (Email testing)
-- **Horizon Dashboard**: http://localhost:8080/horizon (Queue monitoring)
+- **Admin Panel**: http://localhost:8081/admin (Basic Auth)
+
 
 ## 🐳 Docker Services
 
@@ -88,13 +95,12 @@ The script will:
 | Service | Container | Port | Description |
 |---------|-----------|------|-------------|
 | **App** | `laradevops_app` | 9000 | PHP 8.3-FPM with Laravel |
-| **Nginx** | `laradevops_nginx` | 8080 | Web server and reverse proxy |
+| **Nginx** | `laradevops_nginx` | 8081 | Web server and reverse proxy |
 | **MySQL** | `laradevops_mysql` | 3306 | Database server |
 | **Redis** | `laradevops_redis` | 6379 | Cache and session storage |
-| **Horizon** | `laradevops_horizon` | - | Laravel queue worker |
 | **Scheduler** | `laradevops_scheduler` | - | Cron task scheduler |
 | **Mailhog** | `laradevops_mailhog` | 8025 | Email testing tool |
-
+ 
 ### Docker Commands
 
 ```bash
@@ -115,9 +121,6 @@ docker-compose exec app bash
 
 # Access database
 docker-compose exec mysql mysql -u laradevops_user -p laradevops
-
-# View Horizon dashboard
-open http://localhost:8080/horizon
 
 # View Mailhog interface
 open http://localhost:8025
@@ -167,30 +170,9 @@ docker-compose exec app php artisan db:seed
 docker-compose exec app php artisan migrate:fresh --seed
 ```
 
-## 🔄 Queue Management with Horizon
+## 🔄 Queue Management
 
-### Setting up Horizon
-
-Laravel Horizon provides a beautiful dashboard and code-driven configuration for your Redis powered queue workers.
-
-```bash
-# Publish Horizon configuration
-docker-compose exec app php artisan horizon:install
-
-# Start Horizon (already running in container)
-docker-compose exec app php artisan horizon
-
-# View Horizon dashboard
-open http://localhost:8080/horizon
-```
-
-### Queue Configuration
-
-Horizon is pre-configured to work with Redis. The dashboard shows:
-- Job throughput and runtime
-- Failed jobs and retry attempts
-- Queue metrics and performance
-- Real-time job monitoring
+Queues run via Redis. The scheduler service handles scheduled tasks via cron.
 
 ## ⏰ Task Scheduling
 
@@ -226,6 +208,25 @@ docker-compose logs scheduler
 ```
 
 ## 📧 Email Testing with Mailhog
+## 🖥️ Admin Panel (Blade)
+
+- URL: `http://localhost:8081/admin`
+- Layout: `src/resources/views/admin/layouts/app.blade.php`
+- Routes: `src/app/Admin/routes/admin.php` (imported in `routes/web.php`)
+- Controllers: `src/app/Admin/Controllers/*`
+
+Sections:
+- Dashboard: PHP/Laravel versions, memory usage, uptime
+- Logs: view/clear `storage/logs/laravel.log`
+- Jobs: list failed jobs, retry one/all, delete
+- Deploy: run `deploy/deploy.sh` and show output
+- Cache: list Redis keys, clear all / by key
+- System: `df -h`, `free -m`, uptime, `whoami`
+
+Logs & Backups:
+- Deploy log: `storage/logs/deploy.log`
+- Backups dir: `storage/backups` (inside container `/var/www/html/storage/backups`)
+
 
 Mailhog captures emails sent by your application for testing and debugging.
 
@@ -434,7 +435,7 @@ The deployment script includes health checks to ensure the application is runnin
 1. **Port already in use**:
    ```bash
    # Check what's using the port
-   sudo netstat -tulpn | grep :8080
+   sudo netstat -tulpn | grep :8081
    
    # Kill the process or change port in docker-compose.yml
    ```
@@ -494,26 +495,6 @@ If you encounter any issues or have questions:
 2. Review the logs for error messages
 3. Create an issue in the GitHub repository
 4. Check the Laravel documentation for framework-specific issues
-
-## 🔄 Version History
-
-### Version 2.0 (Production Ready)
-- ✅ Laravel Horizon for queue management
-- ✅ Automated task scheduling with cron
-- ✅ Mailhog for email testing
-- ✅ Multi-channel notification system (Slack/Telegram/Discord)
-- ✅ Automatic database backup before deployment
-- ✅ Enhanced CI/CD pipeline with Docker builds
-- ✅ Deployment notifications and logging
-- ✅ Production-ready Docker services
-
-### Version 1.0 (MVP)
-- ✅ Docker environment setup
-- ✅ CI/CD pipeline with GitHub Actions
-- ✅ SSH deployment script
-- ✅ Development initialization script
-- ✅ Basic Laravel project structure
-- ✅ Comprehensive documentation
 
 ---
 

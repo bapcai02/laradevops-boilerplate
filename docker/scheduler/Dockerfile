@@ -30,8 +30,14 @@ RUN docker-php-ext-configure gd --with-freetype --with-jpeg --with-webp --with-x
     intl \
     zip
 
-# Install Redis extension
-RUN pecl install redis-5.3.7 && docker-php-ext-enable redis
+# Install Redis extension (compatible with PHP 8.3)
+RUN set -ex; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends $PHPIZE_DEPS; \
+    pecl install redis; \
+    docker-php-ext-enable redis; \
+    apt-get purge -y --auto-remove $PHPIZE_DEPS; \
+    rm -rf /var/lib/apt/lists/*
 
 # Get latest Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
@@ -39,14 +45,11 @@ COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 # Set working directory
 WORKDIR /var/www/html
 
-# Copy existing application directory contents
-COPY . /var/www/html
+# Copy Laravel app source (composer.json lives in src/)
+COPY src/ /var/www/html
 
-# Copy existing application directory permissions
-COPY --chown=www-data:www-data . /var/www/html
-
-# Change current user to www
-USER www-data
+# Copy with proper ownership
+COPY --chown=www-data:www-data src/ /var/www/html
 
 # Install dependencies
 RUN composer install --no-dev --optimize-autoloader --no-interaction
@@ -62,6 +65,9 @@ RUN crontab /etc/cron.d/laravel-scheduler
 
 # Create the log file to be able to run tail
 RUN touch /var/log/cron.log
+
+# Change current user to www
+USER www-data
 
 # Expose port 9000 and start cron
 CMD ["cron", "-f"]

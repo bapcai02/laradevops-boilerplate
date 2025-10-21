@@ -10,6 +10,7 @@ services:
     working_dir: /var/www/html
     volumes:
       - ./src:/var/www/html
+      - ./backups:/backups
     networks:
       - laradevops_network
 
@@ -69,22 +70,6 @@ services:
     networks:
       - laradevops_network
 
-  horizon:
-    build:
-      context: .
-      dockerfile: docker/horizon/Dockerfile
-    container_name: laradevops_horizon
-    restart: unless-stopped
-    working_dir: /var/www/html
-    volumes:
-      - ./src:/var/www/html
-    depends_on:
-      - app
-      - redis
-      - mysql
-    networks:
-      - laradevops_network
-
   scheduler:
     build:
       context: .
@@ -110,6 +95,7 @@ services:
       - "${MAILHOG_SMTP_PORT:-1025}:1025"
     networks:
       - laradevops_network
+
 
 volumes:
   mysql_data:

@@ -15,6 +15,7 @@ RUN apt-get update && apt-get install -y \
     libjpeg62-turbo-dev \
     libwebp-dev \
     libxpm-dev \
+    default-mysql-client \
     && rm -rf /var/lib/apt/lists/*
 
 # Install PHP extensions
@@ -29,8 +30,14 @@ RUN docker-php-ext-configure gd --with-freetype --with-jpeg --with-webp --with-x
     intl \
     zip
 
-# Install Redis extension
-RUN pecl install redis-5.3.7 && docker-php-ext-enable redis
+# Install Redis extension (compatible with PHP 8.3)
+RUN set -ex; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends $PHPIZE_DEPS; \
+    pecl install redis; \
+    docker-php-ext-enable redis; \
+    apt-get purge -y --auto-remove $PHPIZE_DEPS; \
+    rm -rf /var/lib/apt/lists/*
 
 # Get latest Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
